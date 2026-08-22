@@ -2,9 +2,12 @@ package streams
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -28,6 +31,7 @@ type ReplicationHandler struct {
 
 	// 2. Struct Value Types (24 bytes)
 	nextStandbyDeadline time.Time // 24 bytes (wall uint64 + ext int64 + loc ptr)
+	sanitizer           *PIISanitizer
 }
 
 func NewReplicationHandler(
@@ -155,6 +159,10 @@ func (h *ReplicationHandler) handleLogicalMessage(msg pglogrepl.Message) error {
 	}
 }
 
+func generateID() string {
+	return uuid.NewString()
+}
+
 func (h *ReplicationHandler) handleRelation(m *pglogrepl.RelationMessage) error {
 	h.relations[m.RelationID] = m
 	log.Printf("Relation: %s.%s (id=%d)", m.Namespace, m.RelationName, m.RelationID)
@@ -168,16 +176,98 @@ func (h *ReplicationHandler) handleInsert(m *pglogrepl.InsertMessage) error {
 	}
 	log.Printf("INSERT into %s.%s", rel.Namespace, rel.RelationName)
 	// TODO: build CDCEvent
+
+	after, err := h.tupleTOJSON(rel, m.Tuple)
+	if err != nil {
+		return err
+	}
+
+	event := h.bus.getEvent()
+	event.ID = generateID()
+	event.Table = rel.RelationName
+	event.Schema = rel.Namespace
+	event.Op = OpInsert
+	event.Timestamp = time.Now().UnixMilli()
+	event.Before = nil
+	event.After = after
+
+	if h.sanitizer != nil {
+		if err := h.sanitizer.Sanitize(event); err != nil {
+			h.bus.putEvent(event)
+			return err
+		}
+	}
+
+	h.bus.Submit(event)
 	return nil
 }
 
 func (h *ReplicationHandler) handleUpdate(m *pglogrepl.UpdateMessage) error {
-	// similar
+	rel, ok := h.relations[m.RelationID]
+
+	if !ok {
+		return fmt.Errorf("unknown relation ud: %d", m.RelationID)
+	}
+
+	before, err := h.tupleTOJSON(rel, m.OldTuple)
+	if err != nil {
+		return err
+	}
+
+	after, err := h.tupleTOJSON(rel, m.NewTuple)
+	if err != nil {
+		return err
+	}
+
+	event := h.bus.getEvent()
+	event.ID = generateID()
+	event.Table = rel.RelationName
+	event.Schema = rel.Namespace
+	event.Op = OpUpdate
+	event.Timestamp = time.Now().UnixMilli()
+	event.Before = before
+	event.After = after
+
+	if h.sanitizer != nil {
+		if err := h.sanitizer.Sanitize(event); err != nil {
+			h.bus.putEvent(event)
+			return err
+		}
+	}
+
+	h.bus.Submit(event)
 	return nil
+
 }
 
 func (h *ReplicationHandler) handleDelete(m *pglogrepl.DeleteMessage) error {
-	// similar
+	rel, ok := h.relations[m.RelationID]
+	if !ok {
+		return fmt.Errorf("unknown relation id: %d", m.RelationID)
+	}
+
+	before, err := h.tupleTOJSON(rel, m.OldTuple)
+	if err != nil {
+		return err
+	}
+
+	event := h.bus.getEvent()
+	event.ID = generateID()
+	event.Table = rel.RelationName
+	event.Schema = rel.Namespace
+	event.Op = OpDelete
+	event.Timestamp = time.Now().UnixMilli()
+	event.Before = before
+	event.After = nil
+
+	if h.sanitizer != nil {
+		if err := h.sanitizer.Sanitize(event); err != nil {
+			h.bus.putEvent(event)
+			return err
+		}
+	}
+
+	h.bus.Submit(event)
 	return nil
 }
 
@@ -187,4 +277,54 @@ func (h *ReplicationHandler) sendStandbyStatus(ctx context.Context) error {
 		WALFlushPosition: h.clientXLogPos,
 		WALApplyPosition: h.clientXLogPos,
 	})
+}
+
+func (h *ReplicationHandler) tupleTOJSON(
+	rel *pglogrepl.RelationMessage,
+	tuple *pglogrepl.TupleData,
+) (json.RawMessage, error) {
+	if tuple == nil {
+		return nil, nil
+	}
+
+	values := make(map[string]any, len(tuple.Columns))
+
+	for idx, col := range tuple.Columns {
+		if idx >= len(rel.Columns) {
+			continue
+		}
+
+		colName := rel.Columns[idx].Name
+
+		switch col.DataType {
+		case 'n': // NULL
+			values[colName] = nil
+		case 'u': // unchanged TOAST VALUE
+			continue
+		case 't', 'b':
+			val, err := h.decodeColumn(col.Data, rel.Columns[idx].DataType)
+			if err != nil {
+				return nil, err
+			}
+			values[colName] = val
+		default:
+			// unknown marker - store raw string as fallback
+			values[colName] = string(col.Data)
+		}
+	}
+
+	return json.Marshal(values)
+}
+
+func (h *ReplicationHandler) decodeColumn(data []byte, dataTypeOID uint32) (any, error) {
+	if h.typeMap == nil {
+		h.typeMap = pgtype.NewMap()
+	}
+
+	if dt, ok := h.typeMap.TypeForOID(dataTypeOID); ok {
+		return dt.Codec.DecodeValue(h.typeMap, dataTypeOID, pgtype.TextFormatCode, data)
+	}
+
+	// fallback if OID is unknown
+	return string(data), nil
 }

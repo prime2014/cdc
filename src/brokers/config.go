@@ -4,6 +4,7 @@ import (
 	"config"
 	"context"
 	"fmt"
+	"os"
 	"streams"
 	"strings"
 )
@@ -89,4 +90,40 @@ func splitAndTrim(s string) []string {
 		}
 	}
 	return out
+}
+
+func NewFromEnv() (Broker, error) {
+	t := BrokerType(strings.ToLower(os.Getenv("BROKER_TYPE")))
+
+	switch t {
+	case Kafka, Redpanda:
+		brokers := splitAndTrim(os.Getenv("KAFKA_BROKERS"))
+		topic := os.Getenv("KAFKA_TOPIC")
+		if len(brokers) == 0 || topic == "" {
+			return nil, fmt.Errorf("%s: KAFKA_BROKERS and KAFKA_TOPIC required", t)
+		}
+		return NewKafkaBroker(brokers, topic), nil
+
+	case NATS:
+		return NewNATSBroker(os.Getenv("NATS_URL"), os.Getenv("NATS_SUBJECT"))
+
+	case RabbitMQ:
+		return NewRabbitMQBroker(os.Getenv("RABBITMQ_URL"), os.Getenv("RABBITMQ_EXCHANGE"))
+
+	case MQTT:
+		return NewMQTTBroker(
+			os.Getenv("MQTT_URL"),
+			os.Getenv("MQTT_CLIENT_ID"),
+			os.Getenv("MQTT_TOPIC"),
+		)
+
+	case Pulsar:
+		return NewPulsarBroker(os.Getenv("PULSAR_URL"), os.Getenv("PULSAR_TOPIC"))
+
+	case Log:
+		return &LogBroker{}, nil
+
+	default:
+		return nil, fmt.Errorf("unknown BROKER_TYPE: %s", t)
+	}
 }

@@ -5,7 +5,6 @@ import (
 	"config"
 	"context"
 	"log"
-	"os"
 	"streams"
 
 	"github.com/jackc/pglogrepl"
@@ -43,10 +42,11 @@ func main5() {
 	connector := brokers.NewConnector(name, broker)
 	defer connector.Close()
 
-	connStr := os.Getenv("DATABASE_URL")
+	// Load database credentials
+	connStr, err := config.LoadDatabaseURL()
 
-	if connStr == "" {
-		log.Fatal("DATABASE_URL is required (must contain ?replication=database)")
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Connect to Postgres using the replication flag

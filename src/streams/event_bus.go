@@ -83,6 +83,11 @@ func (b *EventBus) putEvent(e *CDCEvent) {
 	b.pool.Put(e)
 }
 
+func (b *EventBus) getEvent() *CDCEvent {
+	data := b.pool.Get().(*CDCEvent)
+	return data
+}
+
 // Non-blocking submit (used by the replication handler)
 func (b *EventBus) Submit(event *CDCEvent) {
 	select {
