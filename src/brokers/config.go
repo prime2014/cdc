@@ -95,6 +95,8 @@ func splitAndTrim(s string) []string {
 func NewFromEnv() (Broker, error) {
 	t := BrokerType(strings.ToLower(os.Getenv("BROKER_TYPE")))
 
+	fmt.Println(t)
+
 	switch t {
 	case Kafka, Redpanda:
 		brokers := splitAndTrim(os.Getenv("KAFKA_BROKERS"))

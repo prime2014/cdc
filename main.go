@@ -5,10 +5,13 @@ import (
 	"config"
 	"context"
 	"log"
+	"log/slog"
+	"os"
 	"streams"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -19,27 +22,34 @@ const (
 	CHECKPOINT_FILE = "checkpoint.lsn"
 )
 
-func main5() {
+func main() {
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, using system env")
+	}
+
+	logger.Info("replication started", "slot", "go_cdc_slot")
+
 	ctx := context.Background()
 
 	// load configuration
-	cfg, err := config.Load("config.yaml")
-	if err != nil {
-		log.Fatal("load config: ", err)
-	}
 
 	// create broker config
-	broker, err := brokers.NewFromConfig(cfg.Broker)
+	broker, err := brokers.NewFromEnv()
 	if err != nil {
 		log.Fatal("create broker: ", err)
 	}
 
-	name := cfg.Broker.Name
-	if name == "" {
-		name = cfg.Broker.Type
-	}
+	// name := cfg.Broker.Name
+	// if name == "" {
+	// 	name = cfg.Broker.Type
+	// }
 
-	connector := brokers.NewConnector(name, broker)
+	connector := brokers.NewConnector("log", broker)
 	defer connector.Close()
 
 	// Load database credentials
@@ -89,7 +99,7 @@ func main5() {
 	err = pglogrepl.StartReplication(ctx, conn, SLOT_NAME, startLSN, pglogrepl.StartReplicationOptions{
 		PluginArgs: []string{
 			"proto_version '2'",
-			"publication_name '" + Publication + "'",
+			"publication_names '" + Publication + "'",
 		},
 	})
 

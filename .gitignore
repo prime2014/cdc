@@ -6,7 +6,7 @@
 *.dylib
 bin/
 out/
-
+checkpoint.lsn
 # Test binaries and coverage reports
 *.test
 *.out

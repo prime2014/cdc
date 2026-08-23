@@ -168,17 +168,39 @@ Connection string must contain the replication flag:
 postgres://user:pass@host:5432/dbname?replication=database
 ```
 
+
 ### Configuration
 
-`config.yaml` example:
+`.env` example:
 
 ```
-broker:
-  type: kafka          # kafka | redpanda | nats | rabbitmq | mqtt | pulsar | log
-  name: main-kafka
-  options:
-    brokers: "localhost:9092"
-    topic: cdc-events
+# PostgreSQL
+DATABASE_URL=postgres://user:password@localhost:5432/database
+
+# Broker selection
+BROKER_TYPE=kafka          # kafka|redpanda|nats|rabbitmq|mqtt|pulsar|log
+BROKER_NAME=main
+
+# Kafka / Redpanda
+KAFKA_BROKERS=localhost:9092
+KAFKA_TOPIC=cdc-events
+
+# NATS
+NATS_URL=nats://localhost:4222
+NATS_SUBJECT=cdc.events
+
+# RabbitMQ
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+RABBITMQ_EXCHANGE=cdc
+
+# MQTT
+MQTT_URL=tcp://localhost:1883
+MQTT_CLIENT_ID=cdc-publisher
+MQTT_TOPIC=cdc
+
+# Pulsar
+PULSAR_URL=pulsar://localhost:6650
+PULSAR_TOPIC=persistent://public/default/cdc-events
 ```
 
 Other broker examples are documented in the `brokers` package / comments.
@@ -247,11 +269,12 @@ go run .
 ```
 
 For local testing without a real broker set:
+```
+.env
+BROKER_TYPE=log
+BROKER_NAME=local-test
+```
 
-```
-broker:
-  type: log
-```
 
 ## License
 MIT
