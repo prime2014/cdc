@@ -178,6 +178,7 @@ postgres://user:pass@host:5432/dbname?replication=database
 DATABASE_URL=postgres://user:password@localhost:5432/database
 
 # Broker selection
+# Ech broker selection goes hand-in-hand with the broker type examples below
 BROKER_TYPE=kafka          # kafka|redpanda|nats|rabbitmq|mqtt|pulsar|log
 BROKER_NAME=main
 
@@ -191,7 +192,7 @@ NATS_SUBJECT=cdc.events
 
 # RabbitMQ
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-RABBITMQ_EXCHANGE=cdc
+RABBITMQ_EXCHANGE=cdc     # set this as topic exchange with routing key: cdc.#
 
 # MQTT
 MQTT_URL=tcp://localhost:1883
