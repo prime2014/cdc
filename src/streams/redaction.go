@@ -16,13 +16,13 @@ const (
 )
 
 type PIISanitizer struct {
-	mode   PIIMode
-	fields map[string]struct{}
-	salt   string
+	Mode   PIIMode
+	Fields map[string]struct{}
+	Salt   string
 }
 
 func (s *PIISanitizer) Sanitize(event *CDCEvent) error {
-	if s.mode == PIINone || len(s.fields) == 0 {
+	if s.Mode == PIINone || len(s.Fields) == 0 {
 		return nil
 	}
 
@@ -53,7 +53,7 @@ func (s *PIISanitizer) sanitizeJSON(raw json.RawMessage) (json.RawMessage, error
 	}
 
 	for k, v := range m {
-		if _, isPII := s.fields[strings.ToLower(k)]; !isPII {
+		if _, isPII := s.Fields[strings.ToLower(k)]; !isPII {
 			continue
 		}
 
@@ -68,17 +68,17 @@ func (s *PIISanitizer) transform(v any) any {
 
 	if !ok {
 		// non-string PII: still Redact
-		if s.mode == PIIRedact {
+		if s.Mode == PIIRedact {
 			return "[REDACTED]"
 		}
 		return v
 	}
 
-	switch s.mode {
+	switch s.Mode {
 	case PIIRedact:
 		return "[REDACTED]"
 	case PIIHash:
-		h := sha256.Sum256([]byte(s.salt + str))
+		h := sha256.Sum256([]byte(s.Salt + str))
 		return hex.EncodeToString(h[:])
 	default:
 		return v

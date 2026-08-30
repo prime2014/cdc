@@ -35,12 +35,28 @@ const (
 )
 
 func InitMessage() {
-	fmt.Println(ColorBlue + "-------------------------------------- | XTREME CDC |------------------------------------" + ColorReset)
+	fmt.Println()
+	fmt.Println(ColorCyan + `  ┌─────────────────────────────────────────────────────────────┐` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorPurple + `  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorYellow + `                                                             ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorYellow + `     █ █ ▀█▀ █▀█ █▀▀ █▀▄▀█ █▀▀     █▀▀ █▀▄ █▀▀              ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorYellow + `     █▄█  █  █▀▄ ██▄ █ ▀ █ ██▄     █▄▄ █▄▀ █▄▄              ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorYellow + `                                                             ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorGreen + `              ▄▀▀ ▄▀▄ ▀█▀ ▄▀█                               ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorGreen + `              ▀▄▄ ▀▄▀  █  █▀█                               ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorYellow + `                                                             ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorWhite + `     ▸ logical replication  ·  change data capture          ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorBlue + `     ▸ slot  ` + ColorWhite + `go_cdc_slot` + ColorBlue + `  ·  plugin  ` + ColorWhite + `pgoutput` + ColorCyan + `               │` + ColorReset)
+	fmt.Println(ColorCyan + `  │` + ColorPurple + `  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  ` + ColorCyan + `│` + ColorReset)
+	fmt.Println(ColorCyan + `  └─────────────────────────────────────────────────────────────┘` + ColorReset)
+	fmt.Println()
 }
 
 func main() {
 
 	InitMessage()
+
+	ring := streams.NewRing(256) // preallocated fixed size
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -61,11 +77,6 @@ func main() {
 	if err != nil {
 		log.Fatal("create broker: ", err)
 	}
-
-	// name := cfg.Broker.Name
-	// if name == "" {
-	// 	name = cfg.Broker.Type
-	// }
 
 	connector := brokers.NewConnector("log", broker)
 	defer connector.Close()
@@ -128,10 +139,20 @@ func main() {
 	log.Println("Logical replication started on slot: ", SLOT_NAME)
 
 	// Create the async event bus
-	bus := streams.NewEventBus(connector, 4, 1000)
+	bus := streams.NewEventBus(connector, 4, 1000, ring)
 	defer bus.Close()
 
-	handler := streams.NewReplicationHandler(store, conn, startLSN, bus)
+	fields := os.Getenv("PII_FIELDS")
+
+	params := streams.ParsePIIFields(fields)
+
+	var sanitizer *streams.PIISanitizer = &streams.PIISanitizer{
+		Mode:   streams.PIIMode(os.Getenv("PII_MODE")),
+		Fields: params,
+		Salt:   "",
+	}
+
+	handler := streams.NewReplicationHandler(store, conn, startLSN, bus, sanitizer)
 	if err := handler.Run(ctx); err != nil {
 		log.Fatal(err)
 	}

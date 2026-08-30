@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,6 +40,7 @@ func NewReplicationHandler(
 	conn *pgconn.PgConn,
 	startLSN pglogrepl.LSN,
 	bus *EventBus,
+	sanitizer *PIISanitizer,
 ) *ReplicationHandler {
 	h := &ReplicationHandler{
 		store:               store,
@@ -48,7 +50,8 @@ func NewReplicationHandler(
 		standbyTimeout:      10 * time.Second,
 		nextStandbyDeadline: time.Now().Add(10 * time.Second),
 
-		bus: bus,
+		bus:       bus,
+		sanitizer: sanitizer,
 	}
 
 	return h
@@ -327,4 +330,15 @@ func (h *ReplicationHandler) decodeColumn(data []byte, dataTypeOID uint32) (any,
 
 	// fallback if OID is unknown
 	return string(data), nil
+}
+
+func ParsePIIFields(raw string) map[string]struct{} {
+	fields := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		name := strings.ToLower(strings.TrimSpace(part))
+		if name != "" {
+			fields[name] = struct{}{}
+		}
+	}
+	return fields
 }
