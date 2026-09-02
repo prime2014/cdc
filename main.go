@@ -152,7 +152,7 @@ func main() {
 		Salt:   "",
 	}
 
-	handler := streams.NewReplicationHandler(store, conn, startLSN, bus, sanitizer)
+	handler := streams.NewReplicationHandler(ctx, store, conn, startLSN, bus, sanitizer)
 	if err := handler.Run(ctx); err != nil {
 		log.Fatal(err)
 	}

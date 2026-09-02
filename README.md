@@ -178,9 +178,13 @@ postgres://user:pass@host:5432/dbname?replication=database
 DATABASE_URL=postgres://user:password@localhost:5432/database
 
 # Broker selection
-# Ech broker selection goes hand-in-hand with the broker type examples below
+# Each broker selection goes hand-in-hand with the broker type examples below
 BROKER_TYPE=kafka          # kafka|redpanda|nats|rabbitmq|mqtt|pulsar|log
 BROKER_NAME=main
+
+# configuration to hide personally identifiable information (PII)
+PII_MODE=redact  
+PII_FIELDS=password,phone,ssn,address
 
 # Kafka / Redpanda
 KAFKA_BROKERS=localhost:9092

@@ -22,6 +22,7 @@ type Broker interface {
 
 type ReplicationHandler struct {
 	// 1. Standard 64-bit Pointers, Maps & Primitive Types (8 bytes each)
+	ctx            context.Context
 	store          *CheckpointStore                      // 8 bytes
 	conn           *pgconn.PgConn                        // 8 bytes
 	clientXLogPos  pglogrepl.LSN                         // 8 bytes (uint64)
@@ -36,6 +37,7 @@ type ReplicationHandler struct {
 }
 
 func NewReplicationHandler(
+	ctx context.Context,
 	store *CheckpointStore,
 	conn *pgconn.PgConn,
 	startLSN pglogrepl.LSN,
@@ -43,6 +45,7 @@ func NewReplicationHandler(
 	sanitizer *PIISanitizer,
 ) *ReplicationHandler {
 	h := &ReplicationHandler{
+		ctx:                 ctx,
 		store:               store,
 		conn:                conn,
 		clientXLogPos:       startLSN,
@@ -201,7 +204,7 @@ func (h *ReplicationHandler) handleInsert(m *pglogrepl.InsertMessage) error {
 		}
 	}
 
-	h.bus.Submit(event)
+	h.bus.Submit(h.ctx, event)
 	return nil
 }
 
@@ -238,7 +241,7 @@ func (h *ReplicationHandler) handleUpdate(m *pglogrepl.UpdateMessage) error {
 		}
 	}
 
-	h.bus.Submit(event)
+	h.bus.Submit(h.ctx, event)
 	return nil
 
 }
@@ -270,7 +273,7 @@ func (h *ReplicationHandler) handleDelete(m *pglogrepl.DeleteMessage) error {
 		}
 	}
 
-	h.bus.Submit(event)
+	h.bus.Submit(h.ctx, event)
 	return nil
 }
 

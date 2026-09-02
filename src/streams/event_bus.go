@@ -52,6 +52,24 @@ func NewEventBus(broker Broker, workers, bufferSize int, ring *Ring) *EventBus {
 	return b
 }
 
+func (b *EventBus) QueueDepth() int {
+	return len(b.events)
+}
+
+func (b *EventBus) QueueCapacity() int {
+	return cap(b.events)
+}
+
+func (b *EventBus) QueueUtilization() float64 {
+	c := cap(b.events)
+
+	if c == 0 {
+		return 0
+	}
+
+	return float64(len(b.events)) / float64(c)
+}
+
 func (b *EventBus) worker(id int) {
 	defer b.wg.Done()
 
@@ -133,16 +151,35 @@ func (b *EventBus) getEvent() *CDCEvent {
 	return data
 }
 
-// Non-blocking submit (used by the replication handler)
-func (b *EventBus) Submit(event *CDCEvent) {
+// blocking submit (used by the replication handler)
+func (b *EventBus) Submit(ctx context.Context, event *CDCEvent) error {
+	high := 0.80
+	low := 0.50
+
+	for cap(b.events) > 0 && float64(len(b.events))/float64(cap(b.events)) >= high {
+		for float64(len(b.events))/float64(cap(b.events)) > low {
+			select {
+			case <-ctx.Done():
+				b.putEvent(event)
+				return ctx.Err()
+			case <-b.ctx.Done():
+				b.putEvent(event)
+				return b.ctx.Err()
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+		break
+	}
+
 	select {
 	case b.events <- event:
-		// queued successfully
+		return nil
+	case <-ctx.Done():
+		b.putEvent(event)
+		return ctx.Err()
 	case <-b.ctx.Done():
 		b.putEvent(event)
-	default:
-		// channel full -decide what to do
-		log.Println("event bus full dropping  event")
+		return b.ctx.Err()
 	}
 }
 
